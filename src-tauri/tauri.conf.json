@@ -10,7 +10,6 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "title": "Plan Converter",
     "windows": [
       {
         "title": "Plan Converter",
