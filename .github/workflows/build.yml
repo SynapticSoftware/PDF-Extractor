@@ -12,6 +12,8 @@ on:
 jobs:
 
   build-desktop:
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -32,6 +34,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - run: npm ci
       - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Release ${{ github.ref_name }}'
@@ -41,6 +45,8 @@ jobs:
   deploy-pwa:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
