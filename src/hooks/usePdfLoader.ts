@@ -49,6 +49,7 @@ export function usePdfLoader(): UsePdfLoaderReturn {
         const thumbnail = await renderThumbnail(page)
         const detectedName = await extractSheetTitle(page)
         const customName = generateDefaultName(detectedName, i)
+        const viewport = page.getViewport({ scale: 1 })
 
         loadedPages.push({
           pageNumber: i,
@@ -56,6 +57,8 @@ export function usePdfLoader(): UsePdfLoaderReturn {
           customName,
           detectedName,
           thumbnail,
+          widthInches: viewport.width / 72,
+          heightInches: viewport.height / 72,
         })
       }
 

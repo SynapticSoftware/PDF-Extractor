@@ -6,11 +6,15 @@ export const OUTPUT_HEIGHT_INCHES = 24
 export const DEFAULT_PPI_INDEX = 0
 
 // All PPI options. Add or remove options here only — nothing else needs updating.
-// Size estimates assume architectural plan-set pages (mostly white, line art) with PNG compression.
 export const PPI_OPTIONS = [
-  { label: 'Print Ready',  ppi: 300, estimatedMbMin: 2,  estimatedMbMax: 8  },
-  { label: 'Max Quality',  ppi: 450, estimatedMbMin: 5,  estimatedMbMax: 15 },
+  { label: 'Print Ready',  ppi: 300 },
+  { label: 'Max Quality',  ppi: 450 },
 ] as const
+
+// PNG compression ratio range for architectural plan-set pages (mostly white, line art).
+// Actual bytes = raw pixels * bytes-per-pixel * ratio. Used for file size estimates only.
+export const PNG_COMPRESSION_RATIO_MIN = 0.02
+export const PNG_COMPRESSION_RATIO_MAX = 0.08
 
 // Thumbnail preview width in pixels — used only for UI previews, never for export
 export const THUMBNAIL_PREVIEW_WIDTH_PX = 375

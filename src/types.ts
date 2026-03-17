@@ -20,6 +20,8 @@ export interface PdfPage {
   customName: string
   detectedName: string | null
   thumbnail: string
+  widthInches: number
+  heightInches: number
 }
 
 /** Export format — SVG embeds a raster at fixed 150 PPI; PNG uses user-selected PPI */

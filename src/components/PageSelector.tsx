@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { PageThumbnail } from './PageThumbnail'
-import { PPI_OPTIONS, SCALE_OPTIONS } from '../constants'
+import { PPI_OPTIONS, SCALE_OPTIONS, TARGET_INCHES_PER_FOOT, PNG_COMPRESSION_RATIO_MIN, PNG_COMPRESSION_RATIO_MAX } from '../constants'
 import type { PdfPage, ExportFormat } from '../types'
 
 interface PageSelectorProps {
@@ -88,6 +88,19 @@ export function PageSelector({
   }, [applyRange])
 
   const selectedOption = PPI_OPTIONS[ppiIndex]
+  const contentScale = TARGET_INCHES_PER_FOOT / SCALE_OPTIONS[scaleIndex].inchesPerFoot
+
+  /** Estimated MB per page based on actual page dimensions, scale, and PPI */
+  const estimate = useMemo(() => {
+    if (pages.length === 0) return null
+    const avgW = pages.reduce((s, p) => s + p.widthInches, 0) / pages.length
+    const avgH = pages.reduce((s, p) => s + p.heightInches, 0) / pages.length
+    const pixels = (avgW * contentScale * selectedOption.ppi) * (avgH * contentScale * selectedOption.ppi)
+    const rawBytes = pixels * 4 // RGBA
+    const minMb = (rawBytes * PNG_COMPRESSION_RATIO_MIN) / (1024 * 1024)
+    const maxMb = (rawBytes * PNG_COMPRESSION_RATIO_MAX) / (1024 * 1024)
+    return { min: Math.max(1, Math.round(minMb)), max: Math.max(1, Math.round(maxMb)) }
+  }, [pages, contentScale, selectedOption.ppi])
 
   return (
     <div>
@@ -220,9 +233,11 @@ export function PageSelector({
                   </option>
                 ))}
               </select>
-              <span className="text-xs text-neutral-500 whitespace-nowrap">
-                ~{selectedOption.estimatedMbMin}&ndash;{selectedOption.estimatedMbMax} MB/page
-              </span>
+              {estimate && (
+                <span className="text-xs text-neutral-500 whitespace-nowrap">
+                  ~{estimate.min}&ndash;{estimate.max} MB/page
+                </span>
+              )}
             </div>
           )}
         </div>
