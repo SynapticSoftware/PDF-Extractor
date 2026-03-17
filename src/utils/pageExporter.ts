@@ -1,6 +1,5 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { AppError } from '../types'
-import { OUTPUT_WIDTH_INCHES, OUTPUT_HEIGHT_INCHES } from '../constants'
 
 // Most browsers cap canvas dimensions at 16 384 px and total area at ~268 M px.
 const MAX_CANVAS_AREA = 268_435_456
@@ -62,17 +61,19 @@ export async function exportPageToPng(
     throw err
   }
 
+  // Detect actual page size from the PDF (72 PDF points = 1 inch)
+  const naturalViewport = page.getViewport({ scale: 1 })
+  const actualWidthIn = naturalViewport.width / 72
+  const actualHeightIn = naturalViewport.height / 72
+
   // Physical output size in inches — grows with contentScale
-  const physWidthIn = OUTPUT_WIDTH_INCHES * contentScale
-  const physHeightIn = OUTPUT_HEIGHT_INCHES * contentScale
+  const physWidthIn = actualWidthIn * contentScale
+  const physHeightIn = actualHeightIn * contentScale
 
   // Pixel dimensions, reduced if exceeding browser canvas limits
   const effectivePpi = clampPpi(ppi, physWidthIn, physHeightIn)
   const outputWidth = Math.round(physWidthIn * effectivePpi)
   const outputHeight = Math.round(physHeightIn * effectivePpi)
-
-  // Scale PDF to fill canvas width; content starts at top-left
-  const naturalViewport = page.getViewport({ scale: 1 })
   const scale = outputWidth / naturalViewport.width
   const scaledViewport = page.getViewport({ scale })
 

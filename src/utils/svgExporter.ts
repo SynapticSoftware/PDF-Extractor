@@ -1,6 +1,5 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { AppError } from '../types'
-import { OUTPUT_WIDTH_INCHES, OUTPUT_HEIGHT_INCHES } from '../constants'
 
 // Internal render resolution for the raster image embedded in SVG.
 // 150 PPI gives good quality while keeping file sizes reasonable.
@@ -55,17 +54,19 @@ export async function exportPageToSvg(
     throw err
   }
 
+  // Detect actual page size from the PDF (72 PDF points = 1 inch)
+  const naturalViewport = page.getViewport({ scale: 1 })
+  const actualWidthIn = naturalViewport.width / 72
+  const actualHeightIn = naturalViewport.height / 72
+
   // Physical output in inches — grows with contentScale
-  const physWidthIn = OUTPUT_WIDTH_INCHES * contentScale
-  const physHeightIn = OUTPUT_HEIGHT_INCHES * contentScale
+  const physWidthIn = actualWidthIn * contentScale
+  const physHeightIn = actualHeightIn * contentScale
 
   // Internal canvas pixels, clamped to browser limits
   const effectivePpi = clampPpi(SVG_RENDER_PPI, physWidthIn, physHeightIn)
   const canvasWidth = Math.round(physWidthIn * effectivePpi)
   const canvasHeight = Math.round(physHeightIn * effectivePpi)
-
-  // Scale PDF to fill canvas width; content starts at top-left
-  const naturalViewport = page.getViewport({ scale: 1 })
   const scale = canvasWidth / naturalViewport.width
   const scaledViewport = page.getViewport({ scale })
 
