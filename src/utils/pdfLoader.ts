@@ -5,6 +5,9 @@ import { AppError } from '../types'
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl
 
+// Suppress noisy "Optional content group not found" warnings from architectural PDFs
+pdfjs.setVerbosityLevel(pdfjs.VerbosityLevel.ERRORS)
+
 /**
  * Reads a File as an ArrayBuffer and loads it as a PDF document.
  * Throws AppError if the file cannot be read or is not a valid PDF.

@@ -77,7 +77,9 @@ export function DropZone({ onFileSelected, onError }: DropZoneProps) {
           Convert architectural PDF plan sets into correctly-scaled PNG or SVG images
           ready to drop into Visio. Select the pages you need, pick your resolution and
           source scale, and export — each file is sized to print at 36" &times; 24" with
-          embedded metadata so Visio places it at the right physical dimensions.
+          embedded metadata so Visio places it at the right physical dimensions.<br />
+          <i>Note: Visio typically compresses inserted images to 300 PPI max, so
+          exporting above that won't improve quality inside a Visio drawing.</i>
         </p>
       </div>
 
