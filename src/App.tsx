@@ -6,7 +6,8 @@ import { PageSelector } from './components/PageSelector'
 import { ExportPanel } from './components/ExportPanel'
 import { ExportProgress } from './components/ExportProgress'
 import { ErrorBanner } from './components/ErrorBanner'
-import type { PdfPage } from './types'
+import { DEFAULT_PPI_INDEX, DEFAULT_SCALE_INDEX, PPI_OPTIONS, SCALE_OPTIONS, TARGET_INCHES_PER_FOOT } from './constants'
+import type { PdfPage, ExportFormat } from './types'
 
 /**
  * Root component. Holds top-level AppState.
@@ -19,6 +20,9 @@ import type { PdfPage } from './types'
 export default function App() {
   const [file, setFile] = useState<File | null>(null)
   const [pages, setPages] = useState<PdfPage[]>([])
+  const [ppiIndex, setPpiIndex] = useState(DEFAULT_PPI_INDEX)
+  const [format, setFormat] = useState<ExportFormat>('png')
+  const [scaleIndex, setScaleIndex] = useState(DEFAULT_SCALE_INDEX)
 
   const {
     pages: loadedPages,
@@ -67,11 +71,12 @@ export default function App() {
     setPages((prev) => prev.map((p) => ({ ...p, selected: false })))
   }, [])
 
-  const handleExport = useCallback((ppi: number) => {
+  const handleExport = useCallback(() => {
     if (!pdfDoc || !file) return
     const selected = pages.filter((p) => p.selected)
-    startExport(pdfDoc, selected, ppi, file.name)
-  }, [pdfDoc, file, pages, startExport])
+    const contentScale = TARGET_INCHES_PER_FOOT / SCALE_OPTIONS[scaleIndex].inchesPerFoot
+    startExport(pdfDoc, selected, PPI_OPTIONS[ppiIndex].ppi, file.name, format, contentScale)
+  }, [pdfDoc, file, pages, ppiIndex, format, scaleIndex, startExport])
 
   const handleDismissError = useCallback(() => {
     setAppError(null)
@@ -79,6 +84,12 @@ export default function App() {
 
   const handleDropError = useCallback((message: string) => {
     setAppError(message)
+  }, [])
+
+  const handleGoHome = useCallback(() => {
+    setFile(null)
+    setPages([])
+    setAppError(null)
   }, [])
 
   const selectedCount = pages.filter((p) => p.selected).length
@@ -108,9 +119,17 @@ export default function App() {
             onSelectAll={handleSelectAll}
             onDeselectAll={handleDeselectAll}
             onSetPages={setPages}
+            onGoHome={handleGoHome}
+            format={format}
+            onFormatChange={setFormat}
+            ppiIndex={ppiIndex}
+            onPpiChange={setPpiIndex}
+            scaleIndex={scaleIndex}
+            onScaleChange={setScaleIndex}
           />
           <ExportPanel
             selectedCount={selectedCount}
+            format={format}
             onExport={handleExport}
           />
         </>

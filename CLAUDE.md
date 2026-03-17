@@ -12,7 +12,6 @@ files at user-selected PPI. Packaged as a Tauri desktop app (Win/Mac/Linux) and 
 ### Stack
 - React 18 + Tailwind CSS (UI)
 - pdfjs-dist (PDF parsing + canvas rendering — runs fully offline)
-- JSZip (bundle exports into a single ZIP)
 - Tauri v2 (desktop shell, native file dialogs, last-folder memory)
 - Vite (build tool)
 - GitHub Actions + tauri-apps/tauri-action (CI/CD)
@@ -79,7 +78,7 @@ No placeholder functions, unused imports, or TODO stubs in committed code.
 /src
   /components       — React UI components (PascalCase filenames)
   /hooks            — Custom React hooks (use-prefixed)
-  /utils            — Pure functions: PDF parsing, canvas rendering, ZIP creation
+  /utils            — Pure functions: PDF parsing, canvas rendering, file saving
   /constants.ts     — ALL numeric values, labels, config — single source of truth
   /types.ts         — All TypeScript interfaces, types, and AppError class
 /src-tauri          — Tauri config and Rust shell (minimal, do not over-customize)
@@ -114,7 +113,7 @@ npm create tauri-app@latest -- --template react-ts
 
 Install dependencies:
 ```
-npm install pdfjs-dist jszip
+npm install pdfjs-dist
 npm install -D tailwindcss @tailwindcss/vite
 ```
 
@@ -139,15 +138,16 @@ labels, or thresholds exist anywhere else in the codebase. To change any value, 
 export const OUTPUT_WIDTH_INCHES = 36
 export const OUTPUT_HEIGHT_INCHES = 24
 
-// Default PPI selection index — points to PPI_OPTIONS[3] = 600 PPI
+// Default PPI selection index — points to PPI_OPTIONS[3] = 450 PPI
 export const DEFAULT_PPI_INDEX = 3
 
 // All PPI options. Add or remove options here only — nothing else needs updating.
+// Max PPI is 450 due to browser canvas size limit (16,384 px max dimension; 36" × 450 = 16,200).
 export const PPI_OPTIONS = [
   { label: 'Screen',        ppi: 72,  estimatedMbMin: 2,   estimatedMbMax: 4   },
   { label: 'Digital Share', ppi: 150, estimatedMbMin: 8,   estimatedMbMax: 15  },
   { label: 'Print Ready',   ppi: 300, estimatedMbMin: 30,  estimatedMbMax: 60  },
-  { label: 'Max Quality',   ppi: 600, estimatedMbMin: 120, estimatedMbMax: 250 },
+  { label: 'Max Quality',   ppi: 450, estimatedMbMin: 67,  estimatedMbMax: 140 },
 ] as const
 
 // Thumbnail preview width in pixels — used only for UI previews, never for export
@@ -166,8 +166,8 @@ export const LAST_SAVE_FOLDER_KEY = 'lastSaveFolder'
 export const SHEET_TITLE_MIN_LENGTH = 2
 export const SHEET_TITLE_MAX_LENGTH = 10
 
-// Appended to the source PDF filename when naming the ZIP export
-export const ZIP_FILENAME_SUFFIX = '_plans.zip'
+// Appended to the source PDF filename when suggesting an export folder name
+export const EXPORT_FOLDER_SUFFIX = '_plans'
 ```
 
 ---
@@ -294,36 +294,28 @@ exportPageToPng(
     never in parallel, to avoid memory exhaustion on large PDFs.
 ```
 
-### `/src/utils/zipBuilder.ts`
-
-```
-buildZip(pages: Array<{ name: string; blob: Blob }>): Promise<Blob>
-  - Creates a new JSZip instance
-  - Adds each blob as "{name}.png"
-  - Generates and returns the zip archive as a Blob
-  - Throws AppError if the zip cannot be generated
-```
-
 ### `/src/utils/fileSaver.ts`
 
 ```
-saveFile(blob: Blob, suggestedName: string): Promise<void>
+saveFiles(files: Array<{ name: string; blob: Blob }>, suggestedFolderName: string): Promise<void>
   - Detects runtime environment by checking window.__TAURI__
+  - Saves each blob as an individual "{name}.png" file to a user-selected directory
 
   Tauri (desktop) path:
     1. Read last saved folder from Tauri store using LAST_SAVE_FOLDER_KEY
-    2. Open Tauri save dialog, defaulting to last folder + suggestedName
+    2. Open Tauri directory picker via open({ directory: true })
     3. If user cancels the dialog, throw AppError with a user-friendly "cancelled" message
-    4. Write the blob to the selected path
-    5. Update LAST_SAVE_FOLDER_KEY in the Tauri store with the new folder
+    4. Write each blob to the selected directory as "{name}.png" via Tauri IPC
+    5. Update LAST_SAVE_FOLDER_KEY in the Tauri store with the selected directory
 
-  Browser path:
-    1. Attempt window.showSaveFilePicker() (File System Access API)
-    2. If the API is unavailable OR the user cancels, throw AppError — do NOT silently
-       fall back to anchor download without informing the user
-    3. Exception: if the browser does not support showSaveFilePicker at all (feature
-       detection returns false), use the anchor download fallback automatically and
-       log a debug note via console.info (this is not an error — it is expected on iOS)
+  Browser path (showDirectoryPicker available — Chrome, Edge):
+    1. Call window.showDirectoryPicker() to get a FileSystemDirectoryHandle
+    2. Write each blob as "{name}.png" via getFileHandle + createWritable
+    3. If the user cancels, throw AppError
+
+  Browser fallback (no showDirectoryPicker — Safari, iOS, Firefox):
+    1. Download each file individually via anchor download
+    2. Log console.info noting individual downloads (this is expected, not an error)
 
   Throws AppError for all failure cases with appropriate user-facing messages.
 ```
@@ -364,9 +356,8 @@ Manages the full export lifecycle.
       - Updates progress: "Exporting page X of Y — [page customName]"
       - Calls exportPageToPng() for the page
       - Checks cancellation flag between each page — stops cleanly if cancelled
-  - Calls buildZip() with all resulting blobs and names
-  - Constructs suggested ZIP filename: originalPdfName (sans extension) + ZIP_FILENAME_SUFFIX
-  - Calls saveFile() with the zip blob and suggested filename
+  - Constructs suggested folder name: originalPdfName (sans extension) + EXPORT_FOLDER_SUFFIX
+  - Calls saveFiles() with all resulting blobs/names and the suggested folder name
   - Sets isExporting: false on completion or error
   - Returns { isExporting, progress, error, startExport, cancelExport }
   - ALL errors caught here, surfaced via error state, never re-thrown to components
@@ -437,7 +428,7 @@ Props: page: PdfPage, onChange: (updated: PdfPage) => void
          - Output pixel dimensions: "{W} × {H} px"  (calculated from OUTPUT_*_INCHES * ppi)
          - File size estimate: "~{min}–{max} MB"  (from PPI_OPTIONS constants)
        Default selected: PPI_OPTIONS[DEFAULT_PPI_INDEX]
-    2. "Export X Pages as ZIP" primary button
+    2. "Export X Pages as PNG" primary button
        - Disabled and visually dimmed when 0 pages are selected
        - Displays the count of currently selected pages
        - Calls onExport(ppi: number) prop when clicked
@@ -574,6 +565,6 @@ Use `vite-plugin-pwa` for service worker generation:
 | Canvas height | OUTPUT_HEIGHT_INCHES × selected ppi        | Always 24" tall                    |
 | Fit mode      | Scale to fill width, letterbox if needed   | White background, centered, no crop|
 | Format        | PNG                                        | Lossless                           |
-| Default PPI   | PPI_OPTIONS[DEFAULT_PPI_INDEX]             | 600 PPI                            |
-| Delivery      | Single ZIP archive                         | One file per selected page inside  |
+| Default PPI   | PPI_OPTIONS[DEFAULT_PPI_INDEX]             | 450 PPI                            |
+| Delivery      | Individual PNG files                       | Saved to a user-selected directory |
 | Naming        | Detected sheet title, fallback Page_##     | Sanitized for OS compatibility     |

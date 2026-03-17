@@ -2,108 +2,116 @@ import { AppError } from '../types'
 import { LAST_SAVE_FOLDER_KEY } from '../constants'
 
 /**
- * Saves a Blob to disk using the best available method for the current platform.
- * Tauri desktop: uses native save dialog with last-folder memory.
- * Browser: uses File System Access API, or anchor download fallback on iOS.
+ * Saves multiple file blobs to a user-selected directory.
+ * Tauri desktop: uses native directory picker with last-folder memory.
+ * Browser: uses File System Access API's showDirectoryPicker, or falls back
+ * to individual anchor downloads on browsers without directory access (iOS/Firefox).
  */
-export async function saveFile(blob: Blob, suggestedName: string): Promise<void> {
+export async function saveFiles(
+  files: Array<{ name: string; blob: Blob }>,
+  suggestedFolderName: string,
+  extension: string = '.png'
+): Promise<void> {
   if (window.__TAURI__) {
-    await saveTauri(blob, suggestedName)
+    await saveTauri(files, suggestedFolderName, extension)
   } else {
-    await saveBrowser(blob, suggestedName)
+    await saveBrowser(files, extension)
   }
 }
 
-async function saveTauri(blob: Blob, suggestedName: string): Promise<void> {
-  const { save } = await import('@tauri-apps/plugin-dialog')
+async function saveTauri(
+  files: Array<{ name: string; blob: Blob }>,
+  suggestedFolderName: string,
+  extension: string
+): Promise<void> {
+  const { open } = await import('@tauri-apps/plugin-dialog')
   const { load: loadStore } = await import('@tauri-apps/plugin-store')
+  const { invoke } = await import('@tauri-apps/api/core')
 
   const store = await loadStore(LAST_SAVE_FOLDER_KEY)
   const lastFolder = await store.get<string>('path')
 
-  const filePath = await save({
-    defaultPath: lastFolder ? `${lastFolder}/${suggestedName}` : suggestedName,
-    filters: [{ name: 'ZIP Archive', extensions: ['zip'] }],
+  const selectedDir = await open({
+    directory: true,
+    defaultPath: lastFolder ?? undefined,
+    title: `Select folder to save files (suggested: ${suggestedFolderName})`,
   })
 
-  if (!filePath) {
+  if (!selectedDir) {
     const err = new AppError(
       'Save cancelled.',
-      'User cancelled the Tauri save dialog'
+      'User cancelled the Tauri directory picker'
     )
     console.error('[saveTauri]', err)
     throw err
   }
 
-  // Write the blob to the selected path via Tauri IPC
-  const { invoke } = await import('@tauri-apps/api/core')
-  const arrayBuffer = await blob.arrayBuffer()
-  try {
-    await invoke('write_file', {
-      path: filePath,
-      contents: Array.from(new Uint8Array(arrayBuffer)),
-    })
-  } catch (e) {
-    const err = new AppError(
-      'Could not save file. Do you have write permissions?',
-      `Tauri write_file invoke failed for "${filePath}": ${e}`
-    )
-    console.error('[saveTauri]', err)
-    throw err
+  for (const { name, blob } of files) {
+    const arrayBuffer = await blob.arrayBuffer()
+    const filePath = `${selectedDir}/${name}${extension}`
+    try {
+      await invoke('write_file', {
+        path: filePath,
+        contents: Array.from(new Uint8Array(arrayBuffer)),
+      })
+    } catch (e) {
+      const err = new AppError(
+        `Could not save ${name}${extension}. Do you have write permissions?`,
+        `Tauri write_file invoke failed for "${filePath}": ${e}`
+      )
+      console.error('[saveTauri]', err)
+      throw err
+    }
   }
 
   // Remember the folder for next time
-  const folder = filePath.substring(0, filePath.lastIndexOf('/'))
-  await store.set('path', folder)
+  await store.set('path', selectedDir)
   await store.save()
 }
 
-async function saveBrowser(blob: Blob, suggestedName: string): Promise<void> {
-  // Feature-detect File System Access API
-  if (!('showSaveFilePicker' in window)) {
-    // iOS and older browsers — anchor download fallback is expected, not an error
-    console.info('[saveBrowser] showSaveFilePicker not supported, using anchor download')
+async function saveBrowser(files: Array<{ name: string; blob: Blob }>, extension: string): Promise<void> {
+  // Feature-detect directory picker API
+  if ('showDirectoryPicker' in window) {
+    let dirHandle: FileSystemDirectoryHandle
+    try {
+      dirHandle = await window.showDirectoryPicker!()
+    } catch (e) {
+      const err = new AppError(
+        'Save cancelled or not supported by your browser.',
+        `showDirectoryPicker failed: ${e}`
+      )
+      console.error('[saveBrowser]', err)
+      throw err
+    }
+
+    for (const { name, blob } of files) {
+      try {
+        const fileHandle = await dirHandle.getFileHandle(`${name}${extension}`, { create: true })
+        const writable = await fileHandle.createWritable()
+        await writable.write(blob)
+        await writable.close()
+      } catch (e) {
+        const err = new AppError(
+          `Could not save ${name}${extension}. Please try again.`,
+          `Directory file write failed for "${name}${extension}": ${e}`
+        )
+        console.error('[saveBrowser]', err)
+        throw err
+      }
+    }
+    return
+  }
+
+  // Fallback: individual anchor downloads (iOS Safari, Firefox)
+  console.info('[saveBrowser] showDirectoryPicker not supported, downloading files individually')
+  for (const { name, blob } of files) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = suggestedName
+    a.download = `${name}${extension}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-    return
-  }
-
-  let handle: FileSystemFileHandle
-  try {
-    handle = await window.showSaveFilePicker!({
-      suggestedName,
-      types: [
-        {
-          description: 'ZIP Archive',
-          accept: { 'application/zip': ['.zip'] },
-        },
-      ],
-    })
-  } catch (e) {
-    const err = new AppError(
-      'Save cancelled or not supported by your browser.',
-      `showSaveFilePicker failed: ${e}`
-    )
-    console.error('[saveBrowser]', err)
-    throw err
-  }
-
-  try {
-    const writable = await handle.createWritable()
-    await writable.write(blob)
-    await writable.close()
-  } catch (e) {
-    const err = new AppError(
-      'Could not write the file. Please try again.',
-      `FileSystemWritableFileStream write failed: ${e}`
-    )
-    console.error('[saveBrowser]', err)
-    throw err
   }
 }

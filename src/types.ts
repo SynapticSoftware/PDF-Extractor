@@ -22,6 +22,9 @@ export interface PdfPage {
   thumbnail: string
 }
 
+/** Export format — SVG embeds a raster at fixed 150 PPI; PNG uses user-selected PPI */
+export type ExportFormat = 'svg' | 'png'
+
 /** Options passed to the export pipeline */
 export interface ExportOptions {
   ppi: number

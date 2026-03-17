@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { PageThumbnail } from './PageThumbnail'
-import type { PdfPage } from '../types'
+import { PPI_OPTIONS, SCALE_OPTIONS } from '../constants'
+import type { PdfPage, ExportFormat } from '../types'
 
 interface PageSelectorProps {
   pages: PdfPage[]
@@ -9,11 +10,16 @@ interface PageSelectorProps {
   onSelectAll: () => void
   onDeselectAll: () => void
   onSetPages: (updater: (prev: PdfPage[]) => PdfPage[]) => void
+  onGoHome: () => void
+  format: ExportFormat
+  onFormatChange: (format: ExportFormat) => void
+  ppiIndex: number
+  onPpiChange: (index: number) => void
 }
 
 /**
  * Renders a responsive grid of PageThumbnail components with
- * selection controls and a page range input.
+ * selection controls, a page range input, a back button, and a resolution dropdown.
  */
 export function PageSelector({
   pages,
@@ -22,6 +28,11 @@ export function PageSelector({
   onSelectAll,
   onDeselectAll,
   onSetPages,
+  onGoHome,
+  format,
+  onFormatChange,
+  ppiIndex,
+  onPpiChange,
 }: PageSelectorProps) {
   const [rangeInput, setRangeInput] = useState('')
   const [rangeError, setRangeError] = useState<string | null>(null)
@@ -72,32 +83,59 @@ export function PageSelector({
     if (e.key === 'Enter') applyRange()
   }, [applyRange])
 
+  const selectedOption = PPI_OPTIONS[ppiIndex]
+
   return (
-    <div className="p-4 pb-32">
-      {/* Header row */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <span className="text-sm text-neutral-400">
-          {selectedCount} of {totalPages} pages selected
+    <div className="p-4 pb-24">
+      {/* Header row — single line, never wraps */}
+      <div className="flex items-center gap-3 mb-4 min-w-0">
+        {/* Left group */}
+        <button
+          type="button"
+          aria-label="Go back to file selection"
+          className="shrink-0 px-3 py-1 text-sm bg-neutral-700 hover:bg-neutral-600 rounded transition-colors"
+          onClick={onGoHome}
+        >
+          &larr; New File
+        </button>
+
+        <span className="shrink-0 text-sm text-neutral-400">
+          {selectedCount} of {totalPages} selected
         </span>
 
+        {/* Select All — 4 filled quadrants */}
         <button
           type="button"
           aria-label="Select all pages"
-          className="px-3 py-1 text-sm bg-neutral-700 hover:bg-neutral-600 rounded transition-colors"
+          title="Select All"
+          className="shrink-0 p-1.5 bg-neutral-700 hover:bg-neutral-600 rounded transition-colors"
           onClick={onSelectAll}
         >
-          Select All
+          <svg viewBox="0 0 16 16" width="16" height="16" className="text-neutral-200">
+            <rect x="1" y="1" width="6" height="6" fill="currentColor" rx="1" />
+            <rect x="9" y="1" width="6" height="6" fill="currentColor" rx="1" />
+            <rect x="1" y="9" width="6" height="6" fill="currentColor" rx="1" />
+            <rect x="9" y="9" width="6" height="6" fill="currentColor" rx="1" />
+          </svg>
         </button>
+
+        {/* Deselect All — 4 outlined quadrants */}
         <button
           type="button"
           aria-label="Deselect all pages"
-          className="px-3 py-1 text-sm bg-neutral-700 hover:bg-neutral-600 rounded transition-colors"
+          title="Deselect All"
+          className="shrink-0 p-1.5 bg-neutral-700 hover:bg-neutral-600 rounded transition-colors"
           onClick={onDeselectAll}
         >
-          Deselect All
+          <svg viewBox="0 0 16 16" width="16" height="16" className="text-neutral-200">
+            <rect x="1.5" y="1.5" width="5" height="5" fill="none" stroke="currentColor" strokeWidth="1.5" rx="0.5" />
+            <rect x="9.5" y="1.5" width="5" height="5" fill="none" stroke="currentColor" strokeWidth="1.5" rx="0.5" />
+            <rect x="1.5" y="9.5" width="5" height="5" fill="none" stroke="currentColor" strokeWidth="1.5" rx="0.5" />
+            <rect x="9.5" y="9.5" width="5" height="5" fill="none" stroke="currentColor" strokeWidth="1.5" rx="0.5" />
+          </svg>
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <input
             type="text"
             value={rangeInput}
@@ -110,13 +148,63 @@ export function PageSelector({
               focus:outline-none focus:ring-1 focus:ring-blue-500 w-40"
           />
           {rangeError && (
-            <span className="text-xs text-red-400">{rangeError}</span>
+            <span className="text-xs text-red-400 whitespace-nowrap">{rangeError}</span>
+          )}
+        </div>
+
+        {/* Spacer pushes dropdowns to the right */}
+        <div className="flex-1" />
+
+        {/* Right group — format + resolution, always on same line */}
+        <div className="shrink-0 flex items-center gap-3">
+          {/* Format dropdown */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="format-select" className="text-sm text-neutral-400">
+              Format:
+            </label>
+            <select
+              id="format-select"
+              aria-label="Export format"
+              value={format}
+              onChange={(e) => onFormatChange(e.target.value as ExportFormat)}
+              className="px-3 py-1.5 text-sm bg-neutral-700 rounded text-neutral-200
+                focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            >
+              <option value="png">PNG</option>
+              <option value="svg">SVG</option>
+            </select>
+          </div>
+
+          {/* Resolution dropdown — only shown for PNG */}
+          {format === 'png' && (
+            <div className="flex items-center gap-2">
+              <label htmlFor="ppi-select" className="text-sm text-neutral-400">
+                Resolution:
+              </label>
+              <select
+                id="ppi-select"
+                aria-label="Export resolution"
+                value={ppiIndex}
+                onChange={(e) => onPpiChange(Number(e.target.value))}
+                className="px-3 py-1.5 text-sm bg-neutral-700 rounded text-neutral-200
+                  focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                {PPI_OPTIONS.map((option, index) => (
+                  <option key={option.ppi} value={index}>
+                    {option.label} ({option.ppi} PPI)
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-neutral-500 whitespace-nowrap">
+                ~{selectedOption.estimatedMbMin}&ndash;{selectedOption.estimatedMbMax} MB/page
+              </span>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Thumbnail grid — 2 cols mobile, 3 tablet, 4-5 desktop */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      {/* Thumbnail grid — 2 cols mobile, 3 tablet, 3-4 desktop (bigger thumbs) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {pages.map((page) => (
           <PageThumbnail
             key={page.pageNumber}
