@@ -2,16 +2,46 @@ import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { AppError } from '../types'
 import { OUTPUT_WIDTH_INCHES, OUTPUT_HEIGHT_INCHES } from '../constants'
 
-// Most browsers cap total canvas area at ~268 million pixels (16384 x 16384).
-// We use a conservative limit and tile-render when the output exceeds it.
+// Most browsers cap canvas dimensions at 16 384 px and total area at ~268 M px.
 const MAX_CANVAS_AREA = 268_435_456
 const MAX_CANVAS_DIM = 16_384
 
 /**
- * Exports a single PDF page as a PNG Blob at the specified PPI.
- * Canvas is always OUTPUT_WIDTH_INCHES x OUTPUT_HEIGHT_INCHES at the given PPI.
- * The PDF page is scaled to fill width and letterboxed with white if aspect ratios differ.
- * For very high PPI that would exceed browser canvas limits, renders in vertical tiles.
+ * Reduces the requested PPI so that the output pixel dimensions stay within
+ * browser canvas limits for the given physical size.
+ */
+function clampPpi(ppi: number, widthIn: number, heightIn: number): number {
+  let effective = ppi
+
+  const desiredW = widthIn * effective
+  const desiredH = heightIn * effective
+  const dimRatio = Math.min(MAX_CANVAS_DIM / desiredW, MAX_CANVAS_DIM / desiredH, 1)
+  if (dimRatio < 1) {
+    effective = Math.floor(effective * dimRatio)
+  }
+
+  const w = Math.round(widthIn * effective)
+  const h = Math.round(heightIn * effective)
+  if (w * h > MAX_CANVAS_AREA) {
+    const areaRatio = Math.sqrt(MAX_CANVAS_AREA / (w * h))
+    effective = Math.floor(effective * areaRatio)
+  }
+
+  return effective
+}
+
+/**
+ * Exports a single PDF page as a PNG Blob.
+ *
+ * Output canvas is (OUTPUT_*_INCHES × contentScale) at the given PPI.
+ * When contentScale > 1 the image is physically larger than 36"×24" so that
+ * measurements remain correct when placed in a Visio page at 1/4":1' scale.
+ * Content is rendered from the top-left corner — no centering or cropping.
+ *
+ * If the pixel dimensions would exceed browser canvas limits the effective PPI
+ * is reduced automatically; the pHYs chunk still reflects the actual pixels-per-inch
+ * so Visio places the image at the correct physical size.
+ *
  * MUST be called sequentially — never in parallel — to avoid memory exhaustion.
  */
 export async function exportPageToPng(
@@ -32,30 +62,18 @@ export async function exportPageToPng(
     throw err
   }
 
-  const outputWidth = OUTPUT_WIDTH_INCHES * ppi
-  const outputHeight = OUTPUT_HEIGHT_INCHES * ppi
-  const totalPixels = outputWidth * outputHeight
+  // Physical output size in inches — grows with contentScale
+  const physWidthIn = OUTPUT_WIDTH_INCHES * contentScale
+  const physHeightIn = OUTPUT_HEIGHT_INCHES * contentScale
 
-  // If within limits, render directly
-  if (totalPixels <= MAX_CANVAS_AREA && outputWidth <= MAX_CANVAS_DIM && outputHeight <= MAX_CANVAS_DIM) {
-    return renderDirect(page, pageNumber, ppi, outputWidth, outputHeight, contentScale)
-  }
+  // Pixel dimensions, reduced if exceeding browser canvas limits
+  const effectivePpi = clampPpi(ppi, physWidthIn, physHeightIn)
+  const outputWidth = Math.round(physWidthIn * effectivePpi)
+  const outputHeight = Math.round(physHeightIn * effectivePpi)
 
-  // Otherwise, tile vertically: split into horizontal strips that fit in a single canvas
-  return renderTiled(page, pageNumber, ppi, outputWidth, outputHeight, contentScale)
-}
-
-async function renderDirect(
-  page: Awaited<ReturnType<PDFDocumentProxy['getPage']>>,
-  pageNumber: number,
-  ppi: number,
-  outputWidth: number,
-  outputHeight: number,
-  contentScale: number
-): Promise<Blob> {
+  // Scale PDF to fill canvas width; content starts at top-left
   const naturalViewport = page.getViewport({ scale: 1 })
-  const baseScale = outputWidth / naturalViewport.width
-  const scale = baseScale * contentScale
+  const scale = outputWidth / naturalViewport.width
   const scaledViewport = page.getViewport({ scale })
 
   const canvas = document.createElement('canvas')
@@ -72,126 +90,22 @@ async function renderDirect(
     throw err
   }
 
+  // White background — covers any aspect-ratio gap at bottom/right edge
   context.fillStyle = '#FFFFFF'
   context.fillRect(0, 0, outputWidth, outputHeight)
 
-  // Center content both horizontally and vertically within the output canvas
-  const xOffset = (outputWidth - scaledViewport.width) / 2
-  const yOffset = (outputHeight - scaledViewport.height) / 2
-
   try {
-    await page.render({
-      canvas,
-      viewport: scaledViewport,
-      transform: [1, 0, 0, 1, xOffset, yOffset],
-    }).promise
+    await page.render({ canvas, viewport: scaledViewport }).promise
   } catch (e) {
     const err = new AppError(
       `Could not render page ${pageNumber} for export.`,
-      `page.render failed for page ${pageNumber} at ${ppi} PPI: ${e}`
+      `page.render failed for page ${pageNumber} at ${effectivePpi} PPI: ${e}`
     )
     console.error('[exportPageToPng]', err)
     throw err
   }
 
-  return canvasToBlob(canvas, pageNumber, ppi)
-}
-
-async function renderTiled(
-  page: Awaited<ReturnType<PDFDocumentProxy['getPage']>>,
-  pageNumber: number,
-  ppi: number,
-  outputWidth: number,
-  outputHeight: number,
-  contentScale: number
-): Promise<Blob> {
-  const naturalViewport = page.getViewport({ scale: 1 })
-  const baseScale = outputWidth / naturalViewport.width
-  const scale = baseScale * contentScale
-  const scaledViewport = page.getViewport({ scale })
-  const xOffset = (outputWidth - scaledViewport.width) / 2
-  const yOffset = (outputHeight - scaledViewport.height) / 2
-
-  // Calculate tile height so each tile fits within canvas limits
-  const tileWidth = Math.min(outputWidth, MAX_CANVAS_DIM)
-  const maxTileHeight = Math.min(
-    Math.floor(MAX_CANVAS_AREA / tileWidth),
-    MAX_CANVAS_DIM
-  )
-
-  // Collect tile image data
-  const tileDataList: { imageData: ImageData; y: number; h: number }[] = []
-
-  for (let tileY = 0; tileY < outputHeight; tileY += maxTileHeight) {
-    const tileH = Math.min(maxTileHeight, outputHeight - tileY)
-
-    const tileCanvas = document.createElement('canvas')
-    tileCanvas.width = tileWidth
-    tileCanvas.height = tileH
-
-    const tileCtx = tileCanvas.getContext('2d')
-    if (!tileCtx) {
-      const err = new AppError(
-        'Could not create export canvas.',
-        `Tile canvas getContext("2d") returned null for page ${pageNumber}`
-      )
-      console.error('[renderTiled]', err)
-      throw err
-    }
-
-    // White background
-    tileCtx.fillStyle = '#FFFFFF'
-    tileCtx.fillRect(0, 0, tileWidth, tileH)
-
-    // Render the PDF page shifted so the visible portion lands on this tile
-    try {
-      await page.render({
-        canvas: tileCanvas,
-        viewport: scaledViewport,
-        transform: [1, 0, 0, 1, xOffset, yOffset - tileY],
-      }).promise
-    } catch (e) {
-      const err = new AppError(
-        `Could not render page ${pageNumber} for export.`,
-        `Tiled page.render failed for page ${pageNumber} tile at y=${tileY}: ${e}`
-      )
-      console.error('[renderTiled]', err)
-      throw err
-    }
-
-    tileDataList.push({
-      imageData: tileCtx.getImageData(0, 0, tileWidth, tileH),
-      y: tileY,
-      h: tileH,
-    })
-  }
-
-  // Stitch tiles onto a final canvas using an approach that stays within limits:
-  // Encode as PNG manually by drawing tiles sequentially onto a final-size canvas.
-  // We already proved individual tiles fit, so the final assembly uses the same tile approach
-  // but writes to a single output via ImageData on a per-tile basis.
-  // Use OffscreenCanvas if available (higher limits in workers), fallback to blob assembly.
-  const finalCanvas = document.createElement('canvas')
-  finalCanvas.width = outputWidth
-  finalCanvas.height = outputHeight
-
-  const finalCtx = finalCanvas.getContext('2d')
-  if (!finalCtx) {
-    // Canvas too large even for assembly — this shouldn't happen since we're using
-    // the same canvas, but browsers may reject it. Fall back to reduced quality.
-    const err = new AppError(
-      `Canvas size ${outputWidth}x${outputHeight} exceeds browser limits. Try a lower PPI.`,
-      `Final assembly canvas getContext returned null for page ${pageNumber} at ${ppi} PPI`
-    )
-    console.error('[renderTiled]', err)
-    throw err
-  }
-
-  for (const tile of tileDataList) {
-    finalCtx.putImageData(tile.imageData, 0, tile.y)
-  }
-
-  return canvasToBlob(finalCanvas, pageNumber, ppi)
+  return canvasToBlob(canvas, pageNumber, effectivePpi)
 }
 
 async function canvasToBlob(canvas: HTMLCanvasElement, pageNumber: number, ppi: number): Promise<Blob> {
@@ -239,17 +153,17 @@ function crc32(data: Uint8Array): number {
 
 /**
  * Injects a pHYs chunk into a PNG blob so that viewers like Visio
- * render the image at the correct physical size (36"×24").
+ * render the image at the correct physical size.
  * The pHYs chunk is inserted immediately after the IHDR chunk (byte 33).
  */
 async function injectPngPhys(blob: Blob, ppi: number): Promise<Blob> {
   const src = new Uint8Array(await blob.arrayBuffer())
 
-  // IHDR always ends at byte 33: 8 (signature) + 25 (IHDR chunk: 4 len + 4 type + 13 data + 4 CRC)
+  // IHDR always ends at byte 33: 8 (signature) + 25 (IHDR chunk)
   const IHDR_END = 33
   const pixelsPerMeter = Math.round(ppi / 0.0254)
 
-  // Build type + data for CRC: "pHYs" (4 bytes) + data (9 bytes: 4 X + 4 Y + 1 unit)
+  // Build type + data for CRC: "pHYs" (4 bytes) + data (9 bytes)
   const typeAndData = new Uint8Array(4 + 9)
   typeAndData[0] = 0x70 // 'p'
   typeAndData[1] = 0x48 // 'H'

@@ -6,10 +6,36 @@ import { OUTPUT_WIDTH_INCHES, OUTPUT_HEIGHT_INCHES } from '../constants'
 // 150 PPI gives good quality while keeping file sizes reasonable.
 const SVG_RENDER_PPI = 150
 
+// Browser canvas limits
+const MAX_CANVAS_AREA = 268_435_456
+const MAX_CANVAS_DIM = 16_384
+
+/** Reduces the PPI so pixel dimensions stay within browser canvas limits. */
+function clampPpi(ppi: number, widthIn: number, heightIn: number): number {
+  let effective = ppi
+
+  const desiredW = widthIn * effective
+  const desiredH = heightIn * effective
+  const dimRatio = Math.min(MAX_CANVAS_DIM / desiredW, MAX_CANVAS_DIM / desiredH, 1)
+  if (dimRatio < 1) {
+    effective = Math.floor(effective * dimRatio)
+  }
+
+  const w = Math.round(widthIn * effective)
+  const h = Math.round(heightIn * effective)
+  if (w * h > MAX_CANVAS_AREA) {
+    const areaRatio = Math.sqrt(MAX_CANVAS_AREA / (w * h))
+    effective = Math.floor(effective * areaRatio)
+  }
+
+  return effective
+}
+
 /**
- * Exports a single PDF page as an SVG Blob with 36"x24" physical dimensions.
- * The PDF content is rendered to a canvas and embedded as a base64 image
- * inside the SVG, preserving correct print dimensions.
+ * Exports a single PDF page as an SVG Blob with physical dimensions that
+ * reflect the content scale. When contentScale > 1 the SVG is physically
+ * larger than 36"×24" so measurements are correct at 1/4":1' in Visio.
+ * Content is rendered from the top-left — no centering or cropping.
  * MUST be called sequentially — never in parallel — to avoid memory exhaustion.
  */
 export async function exportPageToSvg(
@@ -29,17 +55,23 @@ export async function exportPageToSvg(
     throw err
   }
 
-  const outputWidth = OUTPUT_WIDTH_INCHES * SVG_RENDER_PPI
-  const outputHeight = OUTPUT_HEIGHT_INCHES * SVG_RENDER_PPI
+  // Physical output in inches — grows with contentScale
+  const physWidthIn = OUTPUT_WIDTH_INCHES * contentScale
+  const physHeightIn = OUTPUT_HEIGHT_INCHES * contentScale
 
+  // Internal canvas pixels, clamped to browser limits
+  const effectivePpi = clampPpi(SVG_RENDER_PPI, physWidthIn, physHeightIn)
+  const canvasWidth = Math.round(physWidthIn * effectivePpi)
+  const canvasHeight = Math.round(physHeightIn * effectivePpi)
+
+  // Scale PDF to fill canvas width; content starts at top-left
   const naturalViewport = page.getViewport({ scale: 1 })
-  const baseScale = outputWidth / naturalViewport.width
-  const scale = baseScale * contentScale
+  const scale = canvasWidth / naturalViewport.width
   const scaledViewport = page.getViewport({ scale })
 
   const canvas = document.createElement('canvas')
-  canvas.width = outputWidth
-  canvas.height = outputHeight
+  canvas.width = canvasWidth
+  canvas.height = canvasHeight
 
   const context = canvas.getContext('2d')
   if (!context) {
@@ -51,20 +83,12 @@ export async function exportPageToSvg(
     throw err
   }
 
-  // White background for letterboxing
+  // White background
   context.fillStyle = '#FFFFFF'
-  context.fillRect(0, 0, outputWidth, outputHeight)
-
-  // Center content both horizontally and vertically
-  const xOffset = (outputWidth - scaledViewport.width) / 2
-  const yOffset = (outputHeight - scaledViewport.height) / 2
+  context.fillRect(0, 0, canvasWidth, canvasHeight)
 
   try {
-    await page.render({
-      canvas,
-      viewport: scaledViewport,
-      transform: [1, 0, 0, 1, xOffset, yOffset],
-    }).promise
+    await page.render({ canvas, viewport: scaledViewport }).promise
   } catch (e) {
     const err = new AppError(
       `Could not render page ${pageNumber} for export.`,
@@ -76,14 +100,15 @@ export async function exportPageToSvg(
 
   const dataUrl = canvas.toDataURL('image/png')
 
+  // SVG dimensions in inches reflect the scaled physical size
   const svgContent = [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<svg xmlns="http://www.w3.org/2000/svg"`,
     `     xmlns:xlink="http://www.w3.org/1999/xlink"`,
-    `     width="${OUTPUT_WIDTH_INCHES}in"`,
-    `     height="${OUTPUT_HEIGHT_INCHES}in"`,
-    `     viewBox="0 0 ${outputWidth} ${outputHeight}">`,
-    `  <image width="${outputWidth}" height="${outputHeight}"`,
+    `     width="${physWidthIn}in"`,
+    `     height="${physHeightIn}in"`,
+    `     viewBox="0 0 ${canvasWidth} ${canvasHeight}">`,
+    `  <image width="${canvasWidth}" height="${canvasHeight}"`,
     `         xlink:href="${dataUrl}" />`,
     `</svg>`,
   ].join('\n')

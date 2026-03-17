@@ -15,6 +15,8 @@ interface PageSelectorProps {
   onFormatChange: (format: ExportFormat) => void
   ppiIndex: number
   onPpiChange: (index: number) => void
+  scaleIndex: number
+  onScaleChange: (index: number) => void
 }
 
 /**
@@ -33,6 +35,8 @@ export function PageSelector({
   onFormatChange,
   ppiIndex,
   onPpiChange,
+  scaleIndex,
+  onScaleChange,
 }: PageSelectorProps) {
   const [rangeInput, setRangeInput] = useState('')
   const [rangeError, setRangeError] = useState<string | null>(null)
@@ -155,8 +159,29 @@ export function PageSelector({
         {/* Spacer pushes dropdowns to the right */}
         <div className="flex-1" />
 
-        {/* Right group — format + resolution, always on same line */}
+        {/* Right group — scale + format + resolution, always on same line */}
         <div className="shrink-0 flex items-center gap-3">
+          {/* Source scale dropdown */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="scale-select" className="text-sm text-neutral-400">
+              Source Scale:
+            </label>
+            <select
+              id="scale-select"
+              aria-label="Source PDF scale"
+              value={scaleIndex}
+              onChange={(e) => onScaleChange(Number(e.target.value))}
+              className="px-3 py-1.5 text-sm bg-neutral-700 rounded text-neutral-200
+                focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            >
+              {SCALE_OPTIONS.map((option, index) => (
+                <option key={option.inchesPerFoot} value={index}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Format dropdown */}
           <div className="flex items-center gap-2">
             <label htmlFor="format-select" className="text-sm text-neutral-400">
