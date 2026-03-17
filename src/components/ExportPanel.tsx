@@ -29,6 +29,7 @@ export function ExportPanel({ selectedCount, format, onExport }: ExportPanelProp
       >
         Export {selectedCount} Page{selectedCount !== 1 ? 's' : ''} as {formatLabel}
       </button>
+      <p className="text-center text-xs text-neutral-600 mt-2">&copy; 2026 Synaptic Software</p>
     </div>
   )
 }

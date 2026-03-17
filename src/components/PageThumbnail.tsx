@@ -85,7 +85,7 @@ export function PageThumbnail({ page, onChange }: PageThumbnailProps) {
         type="text"
         value={page.customName}
         placeholder={page.detectedName ?? ''}
-        onChange={(e) => onChange({ ...page, customName: e.target.value })}
+        onChange={(e) => onChange({ ...page, customName: e.target.value, selected: true })}
         onFocus={handleNameFocus}
         onBlur={handleNameCommit}
         onKeyDown={handleNameKeyDown}

@@ -90,9 +90,9 @@ export function PageSelector({
   const selectedOption = PPI_OPTIONS[ppiIndex]
 
   return (
-    <div className="p-4 pb-24">
-      {/* Header row — single line, never wraps */}
-      <div className="flex items-center gap-3 mb-4 min-w-0">
+    <div>
+      {/* Header row — sticky, single line, never wraps */}
+      <div className="sticky top-0 z-10 bg-neutral-900 px-4 pt-4 pb-3 flex items-center gap-3 min-w-0">
         {/* Left group */}
         <button
           type="button"
@@ -229,7 +229,7 @@ export function PageSelector({
       </div>
 
       {/* Thumbnail grid — 2 cols mobile, 3 tablet, 3-4 desktop (bigger thumbs) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-4 pb-24">
         {pages.map((page) => (
           <PageThumbnail
             key={page.pageNumber}

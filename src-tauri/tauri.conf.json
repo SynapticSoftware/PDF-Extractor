@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Plan Converter",
+        "title": "Super-Useful PDF to Visio Machine",
         "width": 1200,
         "height": 800,
         "dragDropEnabled": false

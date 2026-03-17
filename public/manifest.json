@@ -1,6 +1,6 @@
 {
-  "name": "Plan Converter",
-  "short_name": "PlanConv",
+  "name": "Super-Useful PDF to Visio Machine",
+  "short_name": "PDF to Visio",
   "display": "standalone",
   "orientation": "landscape",
   "start_url": "/",

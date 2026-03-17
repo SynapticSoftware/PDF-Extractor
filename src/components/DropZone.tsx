@@ -70,7 +70,17 @@ export function DropZone({ onFileSelected, onError }: DropZoneProps) {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen p-4">
+    <div className="flex flex-col items-center justify-center min-h-screen p-4 gap-8">
+      <div className="text-center max-w-xl">
+        <h1 className="text-3xl font-bold text-white mb-3">Super-Useful PDF to Visio Machine</h1>
+        <p className="text-sm text-neutral-400 leading-relaxed">
+          Convert architectural PDF plan sets into correctly-scaled PNG or SVG images
+          ready to drop into Visio. Select the pages you need, pick your resolution and
+          source scale, and export — each file is sized to print at 36" &times; 24" with
+          embedded metadata so Visio places it at the right physical dimensions.
+        </p>
+      </div>
+
       <div
         role="button"
         tabIndex={0}
@@ -115,6 +125,14 @@ export function DropZone({ onFileSelected, onError }: DropZoneProps) {
           onChange={handleInputChange}
         />
       </div>
+
+      <ol className="max-w-md text-sm text-neutral-500 space-y-1 list-decimal list-inside">
+        <li>Upload a PDF plan set</li>
+        <li>Select the pages you want to export</li>
+        <li>Choose your format (PNG or SVG), resolution, and source scale</li>
+        <li>Click Export and pick a save folder</li>
+        <li>Insert the exported files into Visio — they'll be correctly sized</li>
+      </ol>
     </div>
   )
 }
