@@ -6,7 +6,7 @@ import { PageSelector } from './components/PageSelector'
 import { ExportPanel } from './components/ExportPanel'
 import { ExportProgress } from './components/ExportProgress'
 import { ErrorBanner } from './components/ErrorBanner'
-import { DEFAULT_PPI_INDEX, DEFAULT_SCALE_INDEX, PPI_OPTIONS, SCALE_OPTIONS, TARGET_INCHES_PER_FOOT } from './constants'
+import { DEFAULT_PPI_INDEX, DEFAULT_SCALE_INDEX, DEFAULT_OUTPUT_SCALE_INDEX, PPI_OPTIONS, SOURCE_SCALE_OPTIONS, OUTPUT_SCALE_OPTIONS } from './constants'
 import type { PdfPage, ExportFormat } from './types'
 
 /**
@@ -23,6 +23,7 @@ export default function App() {
   const [ppiIndex, setPpiIndex] = useState(DEFAULT_PPI_INDEX)
   const [format, setFormat] = useState<ExportFormat>('png')
   const [scaleIndex, setScaleIndex] = useState(DEFAULT_SCALE_INDEX)
+  const [outputScaleIndex, setOutputScaleIndex] = useState(DEFAULT_OUTPUT_SCALE_INDEX)
 
   const {
     pages: loadedPages,
@@ -74,9 +75,9 @@ export default function App() {
   const handleExport = useCallback(() => {
     if (!pdfDoc || !file) return
     const selected = pages.filter((p) => p.selected)
-    const contentScale = TARGET_INCHES_PER_FOOT / SCALE_OPTIONS[scaleIndex].inchesPerFoot
+    const contentScale = OUTPUT_SCALE_OPTIONS[outputScaleIndex].inchesPerFoot / SOURCE_SCALE_OPTIONS[scaleIndex].inchesPerFoot
     startExport(pdfDoc, selected, PPI_OPTIONS[ppiIndex].ppi, file.name, format, contentScale)
-  }, [pdfDoc, file, pages, ppiIndex, format, scaleIndex, startExport])
+  }, [pdfDoc, file, pages, ppiIndex, format, scaleIndex, outputScaleIndex, startExport])
 
   const handleDismissError = useCallback(() => {
     setAppError(null)
@@ -126,6 +127,8 @@ export default function App() {
             onPpiChange={setPpiIndex}
             scaleIndex={scaleIndex}
             onScaleChange={setScaleIndex}
+            outputScaleIndex={outputScaleIndex}
+            onOutputScaleChange={setOutputScaleIndex}
           />
           <ExportPanel
             selectedCount={selectedCount}

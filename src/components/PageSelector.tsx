@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
 import { PageThumbnail } from './PageThumbnail'
-import { PPI_OPTIONS, SCALE_OPTIONS, TARGET_INCHES_PER_FOOT, PNG_COMPRESSION_RATIO_MIN, PNG_COMPRESSION_RATIO_MAX } from '../constants'
+import { PPI_OPTIONS, SOURCE_SCALE_OPTIONS, OUTPUT_SCALE_OPTIONS, PNG_COMPRESSION_RATIO_MIN, PNG_COMPRESSION_RATIO_MAX } from '../constants'
 import type { PdfPage, ExportFormat } from '../types'
 
 interface PageSelectorProps {
@@ -17,6 +17,8 @@ interface PageSelectorProps {
   onPpiChange: (index: number) => void
   scaleIndex: number
   onScaleChange: (index: number) => void
+  outputScaleIndex: number
+  onOutputScaleChange: (index: number) => void
 }
 
 /**
@@ -37,6 +39,8 @@ export function PageSelector({
   onPpiChange,
   scaleIndex,
   onScaleChange,
+  outputScaleIndex,
+  onOutputScaleChange,
 }: PageSelectorProps) {
   const [rangeInput, setRangeInput] = useState('')
   const [rangeError, setRangeError] = useState<string | null>(null)
@@ -88,7 +92,7 @@ export function PageSelector({
   }, [applyRange])
 
   const selectedOption = PPI_OPTIONS[ppiIndex]
-  const contentScale = TARGET_INCHES_PER_FOOT / SCALE_OPTIONS[scaleIndex].inchesPerFoot
+  const contentScale = OUTPUT_SCALE_OPTIONS[outputScaleIndex].inchesPerFoot / SOURCE_SCALE_OPTIONS[scaleIndex].inchesPerFoot
 
   /** Estimated MB per page based on actual page dimensions, scale, and PPI */
   const estimate = useMemo(() => {
@@ -187,7 +191,28 @@ export function PageSelector({
               className="px-3 py-1.5 text-sm bg-neutral-700 rounded text-neutral-200
                 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
             >
-              {SCALE_OPTIONS.map((option, index) => (
+              {SOURCE_SCALE_OPTIONS.map((option, index) => (
+                <option key={option.inchesPerFoot} value={index}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Output scale dropdown */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="output-scale-select" className="text-sm text-neutral-400">
+              Output Scale:
+            </label>
+            <select
+              id="output-scale-select"
+              aria-label="Output architectural scale"
+              value={outputScaleIndex}
+              onChange={(e) => onOutputScaleChange(Number(e.target.value))}
+              className="px-3 py-1.5 text-sm bg-neutral-700 rounded text-neutral-200
+                focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            >
+              {OUTPUT_SCALE_OPTIONS.map((option, index) => (
                 <option key={option.inchesPerFoot} value={index}>
                   {option.label}
                 </option>

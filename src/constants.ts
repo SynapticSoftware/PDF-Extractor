@@ -35,14 +35,26 @@ export const SHEET_TITLE_MAX_LENGTH = 10
 // Appended to the source PDF filename when suggesting an export folder name
 export const EXPORT_FOLDER_SUFFIX = '_plans'
 
-// Architectural scale options for the source PDF.
-// The target Visio page is always 1/4":1' (TARGET_INCHES_PER_FOOT).
-// Content scale factor = TARGET / SOURCE inches-per-foot.
-export const TARGET_INCHES_PER_FOOT = 0.25
-
+// Architectural scale options.
+// Content scale factor = OUTPUT / SOURCE inches-per-foot.
 export const DEFAULT_SCALE_INDEX = 0
+export const DEFAULT_OUTPUT_SCALE_INDEX = 4
 
-export const SCALE_OPTIONS = [
+// Source scales — typical plan-set drawing scales
+export const SOURCE_SCALE_OPTIONS = [
+  { label: '1/4" = 1\'',   inchesPerFoot: 0.25    },
+  { label: '3/16" = 1\'',  inchesPerFoot: 0.1875  },
+  { label: '1/8" = 1\'',   inchesPerFoot: 0.125   },
+  { label: '3/32" = 1\'',  inchesPerFoot: 0.09375 },
+  { label: '1/16" = 1\'',  inchesPerFoot: 0.0625  },
+] as const
+
+// Output scales — includes larger detail scales up to 1"=1'
+export const OUTPUT_SCALE_OPTIONS = [
+  { label: '1" = 1\'',     inchesPerFoot: 1       },
+  { label: '3/4" = 1\'',   inchesPerFoot: 0.75    },
+  { label: '1/2" = 1\'',   inchesPerFoot: 0.5     },
+  { label: '3/8" = 1\'',   inchesPerFoot: 0.375   },
   { label: '1/4" = 1\'',   inchesPerFoot: 0.25    },
   { label: '3/16" = 1\'',  inchesPerFoot: 0.1875  },
   { label: '1/8" = 1\'',   inchesPerFoot: 0.125   },
