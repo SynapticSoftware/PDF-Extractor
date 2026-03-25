@@ -14,8 +14,10 @@
     "windows": [
       {
         "title": "Super-Useful PDF to Visio Machine",
-        "width": 1200,
+        "width": 1400,
         "height": 800,
+        "minWidth": 1400,
+        "minHeight": 800,
         "dragDropEnabled": false
       }
     ],
